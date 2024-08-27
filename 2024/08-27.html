@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en" class="[scrollbar-gutter:stable]">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>
+Connecting to MongoDB with Elixir
+    </title>
+    <base href="https://zookzook.github.io">
+    <link phx-track-static rel="stylesheet" href="assets/app.css">
+    <link rel="preconnect" href="https://rsms.me/">
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/styles/github-dark-dimmed.min.css">
+    <script defer phx-track-static type="text/javascript" src="assets/app.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/languages/elixir.min.js"></script>
+    <script>
+        hljs.highlightAll();
+    </script>
+  </head>
+  <body class="font-sans mx-auto max-w-prose">
+    <div class="pt-12 pb-4">
+<main class="px-4 py-20 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-2xl">
+<article>
+    <div class="text-sm text-center mt-2 mb-2 text-gray-500">August 26, 2024</div>
+    <h1 class="text-6xl font-bold text-center mt-6 mb-8">Connecting to MongoDB with Elixir</h1>
+
+        <div class="prose prose-p:mb-3 prose-p:mt-0 prose-p:leading-snug">
+      <p>
+In this article, I would like to explain how to connect to MongoDB in Elixir.</p>
+<p>
+MongoDB is an excellent No-SQL database with many interesting possibilities. Unfortunately, the database is
+somewhat underestimated in the Elixir community and many tutorials like to refer to the Postgresql database.</p>
+<p>
+We will learn how to create a replica set and create a simple Elixir program that connects to the three instances.</p>
+
+   </div>
+
+        <div class="prose prose-p:mb-3 prose-p:mt-0 prose-p:leading-snug">
+      <p>
+Let’s install the community editor of the MongoDB. In the case of MacOS X we can use <code class="inline">brew</code> to install it:</p>
+<pre><code class="bash">    brew tap mongodb/brew
+    brew install mongodb-community</code></pre>
+<p>
+Before we set up MongoDB as a replica set, we create a new Elixir project with mix. With the <code class="inline">--sup</code> option, we get the basic framework for an OTP application with supervisor tree.</p>
+<pre><code class="bash">➜  elixir mix new connect --sup
+* creating README.md
+* creating .formatter.exs
+* creating .gitignore
+* creating mix.exs
+* creating lib
+* creating lib/connect.ex
+* creating lib/connect/application.ex
+* creating test
+* creating test/test_helper.exs
+* creating test/connect_test.exs
+
+Your Mix project was created successfully.
+You can use "mix" to compile it, test it, and more:
+
+    cd connect
+    mix test
+
+Run "mix help" for more commands.</code></pre>
+<p>
+We add the <a href="https://hex.pm/packages/mongodb_driver">mongodb driver</a> as a dependency to the mix.exs file and
+call <code class="inline">mix deps.get</code> to load the driver.</p>
+<pre><code class="elixir">defp deps do
+  [
+    {:mongodb_driver, "~> 1.4"}
+  ]
+end</code></pre>
+<h2>
+MongoDB - Replica Set</h2>
+<p>
+Now we will set up the MongoDB with a relica set. We can start a standalone instance, but a typical
+environment consists of a replica set of three instances. This makes the transactions possible.</p>
+<p>
+We first start three instances on three different ports and then configure the replica set. The
+replica set is called <code class="inline">vesoldo_set</code>. In the case of Mac OS X we will increase the number of file descriptor to avoid
+running out of file descriptors.</p>
+<pre><code class="bash">mkdir -p tmp/db1
+mkdir -p tmp/db2
+mkdir -p tmp/db3
+ulimit -S -n 2048
+
+mongod --wiredTigerCacheSizeGB=1 --fork --dbpath tmp/db1 --logpath tmp/db1/log --port 27017 --bind_ip 0.0.0.0 --replSet vesoldo_set
+mongod --wiredTigerCacheSizeGB=1 --fork --dbpath tmp/db2 --logpath tmp/db2/log --port 27018 --bind_ip 0.0.0.0 --replSet vesoldo_set
+mongod --wiredTigerCacheSizeGB=1 --fork --dbpath tmp/db3 --logpath tmp/db3/log --port 27019 --bind_ip 0.0.0.0 --replSet vesoldo_set</code></pre>
+
+   </div>
+
+        <div class="prose prose-p:mb-3 prose-p:mt-0 prose-p:leading-snug">
+      <p>
+If the servers are running without any error then we can configure the replica set. We use the mongosh tool to log in
+and configure the replica set:</p>
+<pre><code class="bash">mongosh 'mongodb://127.0.0.1:27017'</code></pre>
+<p>
+In the mongo shell we start the replica set using the <code class="inline">rs.initiate</code> command:</p>
+<pre><code class="javascript">rs.initiate({_id: "versoldo_set", members: [{_id: 0, host: "127.0.0.1:27017"}, {_id: 1, host: "127.0.0.1:27018"}, {_id: 2, host: "127.0.0.1:27019"}]})</code></pre>
+<p>
+If the shell shows something like:</p>
+<pre><code class="json">{
+  ok: 1,
+  '$clusterTime': {
+    clusterTime: Timestamp({ t: 1724679121, i: 1 }),
+    signature: {
+      hash: Binary.createFromBase64('AAAAAAAAAAAAAAAAAAAAAAAAAAA=', 0),
+      keyId: Long('0')
+    }
+  },
+  operationTime: Timestamp({ t: 1724679121, i: 1 })
+}</code></pre>
+<p>
+then we can quid the shell and our replica set is running. For more information about replica set
+you can take a look at the <a href="https://www.mongodb.com/docs/manual/replication/">official documentation.</a></p>
+
+   </div>
+
+        <div class="prose prose-p:mb-3 prose-p:mt-0 prose-p:leading-snug">
+      <h2>
+Connecting to the local instance</h2>
+<p>
+Now everything is prepared to connect to our replica set from Elixir. You can use the interactive
+Elixir shell and start the so-called topology process:</p>
+<pre><code class="bash">iex -S mix
+
+Compiling 2 files (.ex)
+Generated connect app
+Interactive Elixir (1.17.2) - press Ctrl+C to exit (type h() ENTER for help)
+iex [15:39 :: 1] >  {:ok, top} = Mongo.start_link(url: "mongodb://localhost:27017/vesoldo")
+{:ok, #PID<0.1111.0>}
+</code></pre>
+<p>
+Now we have a pid of the topology process. This process manage all the details of the replica set.
+Let’s insert some data and fetch the data from the server.</p>
+<pre><code class="bash">Mongo.insert_one(top, "dogs", %{name: "Greta"})
+{:ok, %Mongo.InsertOneResult{acknowledged: true, inserted_id: #BSON.ObjectId<66cc86e24ae06e2a2c893b4b>}}
+Mongo.insert_one(top, "dogs", %{name: "Tom"})
+{:ok, %Mongo.InsertOneResult{acknowledged: true, inserted_id: #BSON.ObjectId<66cc86f04ae06e2a2c2d4b58>}}
+Mongo.insert_one(top, "dogs", %{name: "Gustav"})
+{:ok, %Mongo.InsertOneResult{acknowledged: true, inserted_id: #BSON.ObjectId<66cc86ff4ae06e2a2c579be9>}}</code></pre>
+<p>
+That was pretty easy. Now we try to fetch the data by using <code class="inline">Mongo.find</code> which returns a stream, so
+we pipe the stream to the <code class="inline">Enum.to_list</code> function.</p>
+<pre><code class="elixir">Mongo.find(top, "dogs", %{}) |> Enum.to_list()
+ [
+    %{"_id" => #BSON.ObjectId<66cc86e24ae06e2a2c893b4b>, "name" => "Greta"},
+    %{"_id" => #BSON.ObjectId<66cc86f04ae06e2a2c2d4b58>, "name" => "Tom"},
+    %{"_id" => #BSON.ObjectId<66cc86ff4ae06e2a2c579be9>, "name" => "Gustav"}
+  ]</code></pre>
+<h2>
+Using a supervisor</h2>
+<p>
+We currently use a local pid of the process. If we add a worker process into our supervisor found in
+the <code class="inline">application.ex</code> file:</p>
+<pre><code class="elixr">children = [
+  {Mongo, [name: :vesoldo_db, url: "mongodb://localhost:27017/vesoldo"]}
+]</code></pre>
+<p>
+and restart our application, then we can use the <code class="inline">:vesoldo_db</code> atom instead of a process pid.
+This allows us to call the Mongo-function directly:</p>
+<pre><code class="elixir">Mongo.find(:vesoldo_db, "dogs", %{}) |> Enum.to_list()
+[
+  %{"_id" => #BSON.ObjectId<66cc86e24ae06e2a2c893b4b>, "name" => "Greta"},
+  %{"_id" => #BSON.ObjectId<66cc86f04ae06e2a2c2d4b58>, "name" => "Tom"},
+  %{"_id" => #BSON.ObjectId<66cc86ff4ae06e2a2c579be9>, "name" => "Gustav"}
+]</code></pre>
+<h2>
+Configure logging</h2>
+<p>
+The MongoDB driver comes with a helpful logging but we need enable it first.
+If we add this following line to our config.exs and restart the application:</p>
+<pre><code class="elixir">config :mongodb_driver, log: true</code></pre>
+<p>
+The driver will log the query sent to the server and the duration of the response. In this case,
+the <code class="inline">find</code> command was sent and it took about 1.1ms to receive the response.      |</p>
+<pre><code class="elixir">Mongo.find(:vesoldo_db, "dogs", %{}) |> Enum.to_list()
+
+19:38:53.212 [info] CMD find "dogs" [] db=1.1ms
+[
+  ...
+]</code></pre>
+<p>
+If we add a new dog to our collection, the driver will log something like:</p>
+<pre><code class="elixir">Mongo.insert_one(:vesoldo_db, "dogs", %{name: "Bodo"})
+
+19:44:00.698 [info] CMD insert "dogs" [documents: [[_id: #BSON.ObjectId<66ccbee04ae06e632973c553>, name: "Bodo"]]] db=15.5ms
+{:ok, %Mongo.InsertOneResult{acknowledged: true, inserted_id: #BSON.ObjectId<66ccbee04ae06e632973c553>}}
+</code></pre>
+
+   </div>
+
+</article>
+  </div>
+</main>
+    </div>
+  <iframe hidden height="0" width="0" src="/phoenix/live_reload/frame"></iframe></body>
+</html>
