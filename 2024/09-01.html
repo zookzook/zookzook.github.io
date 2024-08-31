@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en" class="[scrollbar-gutter:stable]">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>
+Using NimbleParsec to solve issues
+    </title>
+    <base href="https://zookzook.github.io">
+    <link phx-track-static rel="stylesheet" href="assets/app.css">
+    <link rel="preconnect" href="https://rsms.me/">
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/styles/github-dark-dimmed.min.css">
+    <script defer phx-track-static type="text/javascript" src="assets/app.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/languages/elixir.min.js"></script>
+    <script>
+        hljs.highlightAll();
+    </script>
+  </head>
+  <body class="font-sans mx-auto max-w-prose">
+    <div class="pt-12 pb-4">
+<main class="px-4 py-20 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-2xl">
+<article>
+    <div class="text-sm text-center mt-2 mb-2 text-gray-500">August 28, 2024</div>
+    <h1 class="text-6xl font-bold text-center mt-6 mb-8">Using NimbleParsec to solve issues</h1>
+
+        <div class="prose prose-p:mb-3 prose-p:mt-0 prose-p:leading-snug">
+      <p>
+In this article, I would like to explain how to parse parts of the invalid JSON string using NimbleParsec.</p>
+<p>
+From the documentation:</p>
+<blockquote>
+  <p>
+NimbleParsec is a simple and fast library for text-based parser combinators.
+Combinators are composed programatically and compiled into multiple clauses with binary matching.  </p>
+</blockquote>
+<h2>
+The issue</h2>
+<p>
+In an Elixir-Phoenix environment, the client sent invalid JSON as a push message via a channel.
+The server could not decode the JSON and therefore aborted the WebSocket connection. The client started a
+new connection and sent the same invalid JSON as a push message via the channel.</p>
+<p>
+It would be easier if the client did not send an invalid JSON.
+The problem here is that the payload and the Phoenix channel data are sent together as JSON.</p>
+<p>
+The server is therefore no longer able to send the message to the channel process in which a
+suitable error message could be sent to the client as a reply. The client could handle the error
+and stop sending the invalid JSON.</p>
+<p>
+The problem with Phoenix is this line in the code:</p>
+<pre><code class="elixr">  [join_ref, ref, topic, event, payload | _] = Phoenix.json_library().decode!(raw_message)</code></pre>
+<p>
+The payload contains an invalid bytes represented by <code class="inline">\uded0</code>. It is a valid UTF-8 string but the
+JSON decoder tries to interprete the bytes which results into an error:</p>
+<pre><code class="elixr">iex [09:59 :: 2] > s = ~S/{"key": "Value: \uded0"}/
+"{\"key\": \"Value: \\uded0\"}"
+iex [09:59 :: 3] > Jason.decode!(s)
+** (Jason.DecodeError) unexpected sequence at position 16: "\\uded0"
+     (jason 1.4.4) lib/jason.ex:92: Jason.decode!/2
+iex:3: (file)</code></pre>
+<h3>
+How to solve this issue?</h3>
+<p>
+To return an error to the client instead of disconnecting the WebSocket connection
+we need to extract the first four parts of the message.</p>
+<p>
+The client sends four strings before the payload. We can extract them without using the JSON
+decoder by parsing the parts. After that, we just replace the payload part by a specific error
+map. The server can propage the message to the right channel process where the process can
+send the error message to the client.</p>
+<p>
+Of course, it would be much easier if the client simply sent valid JSON, but sometimes this is apparently not possible.</p>
+<h2>
+The Phoenix Message</h2>
+<p>
+The client sends four strings in an array the and last element of the array is the payload:</p>
+<pre><code class="elixir">["1","2","Topic","Event",{...}]</code></pre>
+<p>
+We can use NimbleParsec to write a parser for the first part of the array:</p>
+<pre><code class="elixir">defmodule PrefixDecoder do
+  import NimbleParsec
+
+  string_with_quotes =
+    ignore(ascii_char([?"]))
+    |> repeat_while(
+      choice([
+        ~S(\") |> string() |> replace(?"),
+        utf8_char([])
+      ]),
+      {:not_quote, []}
+    )
+    |> ignore(ascii_char([?"]))
+    |> reduce({List, :to_string, []})
+
+  defp not_quote(<<?", _::binary>>, context, _, _), do: {:halt, context}
+  defp not_quote(_, context, _, _), do: {:cont, context}
+
+  defparsec(
+    :header,
+    ignore(string("["))
+    |> concat(string_with_quotes)
+    |> ignore(string(","))
+    |> concat(string_with_quotes)
+    |> ignore(string(","))
+    |> concat(string_with_quotes)
+    |> ignore(string(","))
+    |> concat(string_with_quotes)
+    |> ignore(string(","))
+  )
+end</code></pre>
+<p>
+Now we can parse fragments of the invalid JSON string. Let’s do some tests:</p>
+
+   </div>
+
+        <div class="prose prose-p:mb-3 prose-p:mt-0 prose-p:leading-snug">
+      <pre><code class="elixir">iex 1> OnsenWeb.PrefixDecoder.header(~S/["1","2","Topic","Event",the rest of the string/)
+{:ok, ["1", "2", "Topic", "Event"], "the rest of the string", %{}, {1, 0}, 25}
+iex 2> OnsenWeb.PrefixDecoder.header(~S/["1",error,"Topic","Event",the rest of the string/)
+{:error, "expected ASCII character equal to \"\\\"\"",
+ "error,\"Topic\",\"Event\",the rest of the string", %{}, {1, 0}, 5}</code></pre>
+<p>
+The parse is very strict because we don’t handle whitespaces so far. This is okay, since the
+client don’t insert whitespaces between the single strings. Let’s make a final test. We
+create an invalid message like the client sometimes does and then we verify that we
+extract the first four strings from the invalid message:</p>
+<pre><code class="elixir">iex 3> message = ~S/["1","2","Topic","Event",{"title": "This does not work: \uded0"}]/
+"[\"1\",\"2\",\"Topic\",\"Event\",{\"title\": \"This does not work: \\uded0\"}]"
+iex 4> Jason.decode!(message)
+** (Jason.DecodeError) unexpected sequence at position 56: "\\uded0"
+    (jason 1.4.4) lib/jason.ex:92: Jason.decode!/2
+    iex:4: (file)
+iex 4> PrefixDecoder.header(message)
+{:ok, ["1", "2", "Topic", "Event"],
+ "{\"title\": \"This does not work: \\uded0\"}]", %{}, {1, 0}, 25}</code></pre>
+<p>
+Now we everything together to provide an own implementation of the <code class="inline">Phoenix.Socket.Serializer</code> behaviour.
+We only need to replace the function:</p>
+
+   </div>
+
+        <div class="prose prose-p:mb-3 prose-p:mt-0 prose-p:leading-snug">
+      <pre><code class="elixir">def decode_text(raw_message) do
+    [join_ref, ref, topic, event, payload | _] = decode_raw_message(raw_message)
+
+    %Message{
+      topic: topic,
+      event: event,
+      payload: payload,
+      ref: ref,
+      join_ref: join_ref
+    }
+  end
+
+  defp decode_raw_message(raw_message) do
+    case Jason.decode(raw_message) do
+      {:ok, result} ->
+        result
+
+      {:error, error} ->
+        Logger.warning("Unable to decode JSON message: #{inspect(raw_message)}, because of #{inspect(error)}")
+        PrefixDecoder.decode(raw_message, error)
+    end
+  end</code></pre>
+<p>
+where the <code class="inline">decode/2</code> function looks like this:</p>
+<pre><code>def decode(raw_message, error) do
+  case header(raw_message) do
+    {:ok, [join_ref, ref, topic, event], _rest, _context, _line, _column} ->
+      [join_ref, ref, topic, event, %{decode_error: "#{inspect(error)}"}]
+
+    other ->
+      Logger.warning("Unable to decode invalid raw message because of #{inspect(other)}")
+      raise error
+  end
+end</code></pre>
+<p>
+By replacing our own implementation in Endpoint module we are able to handle those invalid JSON messages.
+The message is propagate to the right channel process and the process can reply with an error message
+which can be handled by the client.</p>
+<p>
+Problem solved, until client sends a completely invalid message where our parser returns an error :-)</p>
+
+   </div>
+
+</article>
+  </div>
+</main>
+    </div>
+  <iframe hidden height="0" width="0" src="/phoenix/live_reload/frame"></iframe></body>
+</html>

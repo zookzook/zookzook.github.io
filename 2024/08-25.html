@@ -23,7 +23,7 @@ Connecting to MongoDB with Elixir
 <main class="px-4 py-20 sm:px-6 lg:px-8">
   <div class="mx-auto max-w-2xl">
 <article>
-    <div class="text-sm text-center mt-2 mb-2 text-gray-500">August 26, 2024</div>
+    <div class="text-sm text-center mt-2 mb-2 text-gray-500">August 25, 2024</div>
     <h1 class="text-6xl font-bold text-center mt-6 mb-8">Connecting to MongoDB with Elixir</h1>
 
         <div class="prose prose-p:mb-3 prose-p:mt-0 prose-p:leading-snug">
@@ -33,14 +33,24 @@ In this article, I would like to explain how to connect to MongoDB in Elixir.</p
 MongoDB is an excellent No-SQL database with many interesting possibilities. Unfortunately, the database is
 somewhat underestimated in the Elixir community and many tutorials like to refer to the Postgresql database.</p>
 <p>
-We will learn how to create a replica set and create a simple Elixir program that connects to the three instances.</p>
+We will learn</p>
+<ul>
+  <li>
+how to create a replica set and create a simple Elixir program that connects to the three instances.  </li>
+  <li>
+how to connect to Atlas with a user certificate  </li>
+  <li>
+how to enable the logger  </li>
+  <li>
+how to listen to driver events  </li>
+</ul>
+<p>
+Let’s install the community editor of the MongoDB. In the case of MacOS X we can use <code class="inline">brew</code> to install it:</p>
 
    </div>
 
         <div class="prose prose-p:mb-3 prose-p:mt-0 prose-p:leading-snug">
-      <p>
-Let’s install the community editor of the MongoDB. In the case of MacOS X we can use <code class="inline">brew</code> to install it:</p>
-<pre><code class="bash">    brew tap mongodb/brew
+      <pre><code class="bash">    brew tap mongodb/brew
     brew install mongodb-community</code></pre>
 <p>
 Before we set up MongoDB as a replica set, we create a new Elixir project with mix. With the <code class="inline">--sup</code> option, we get the basic framework for an OTP application with supervisor tree.</p>
@@ -150,7 +160,54 @@ we pipe the stream to the <code class="inline">Enum.to_list</code> function.</p>
     %{"_id" => #BSON.ObjectId<66cc86f04ae06e2a2c2d4b58>, "name" => "Tom"},
     %{"_id" => #BSON.ObjectId<66cc86ff4ae06e2a2c579be9>, "name" => "Gustav"}
   ]</code></pre>
-<h2>
+<p>
+Now we will learn how to connect using a X.509 user certificate to a database provided by the cloud provider <a href="https://cloud.mongodb.com">Atlas</a>.</p>
+
+   </div>
+
+        <div class="prose prose-p:mb-3 prose-p:mt-0 prose-p:leading-snug">
+      <h2>
+Connecting to Atlas</h2>
+<p>
+Preparations: After we have set up a simple database via the Atlas dashboard,
+we need to enter our IP address under <strong>Network Access</strong>.
+Under <strong>Database Access</strong> we create a user with read and write access rights and select the <strong>X.509 Authentication Method</strong>.</p>
+<p>
+While creating the new user we can download the user certificate (X509-cert-5985849297881971623.pem). Now we can following the description from
+the readme file of the driver. First, we extract the user name from the certificate</p>
+<pre><code class="shell">openssl x509 -in X509-cert-5985849297881971623.pem -inform PEM -subject -nameopt RFC2253
+
+> CN=user</code></pre>
+<p>
+We use as the <code class="inline">username</code> attribute the name from the certificate, the <code class="inline">auth_mechanism</code> must be <code class="inline">:x509</code>.
+The configuration looks like this:</p>
+<pre><code class="elixir">opts = [
+    url: "mongodb+srv://cluster0.169dm4y.mongodb.net/vesoldo",
+    ssl: true,
+    username: "CN=user",
+    auth_mechanism: :x509,
+    ssl_opts: [
+      verify: :verify_peer,
+      cacertfile: :public_key.cacerts_get(),
+      certfile: ~c"./X509-cert-5985849297881971623.pem",
+      customize_hostname_check: [
+        match_fun:
+          :public_key.pkix_verify_hostname_match_fun(:https)
+      ]
+    ]]
+
+Mongo.start_link(opts)</code></pre>
+<p>
+In the <code class="inline">ssl_opts</code> we need to specify some options for the underlying <code class="inline">ssl</code> module of Erlang. Here
+we specify the path to the certificate as a charlist. The function <code class="inline">:public_key.cacerts_get()</code> returns
+the trusted CA certificates of the operation system, because we use the <code class="inline">verify_peer</code> option.</p>
+<p>
+The setting of the attribute <code class="inline">customize_hostname_check</code> allows wildcard certificate matching as specified by the HTTP standard.</p>
+
+   </div>
+
+        <div class="prose prose-p:mb-3 prose-p:mt-0 prose-p:leading-snug">
+      <h2>
 Using a supervisor</h2>
 <p>
 We currently use a local pid of the process. If we add a worker process into our supervisor found in
