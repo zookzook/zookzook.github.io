@@ -23,7 +23,7 @@ Connecting to MongoDB with Elixir
 <main class="px-4 py-20 sm:px-6 lg:px-8">
   <div class="mx-auto max-w-2xl">
 <article>
-    <header class="fixed left-0 top-0 bg-white py-3 flex items-center justify-center w-full">
+    <header class="fixed left-0 top-0 bg-white/95 py-3 flex items-center justify-center w-full">
         <div class="flex items-center justify-center w-40 h-full text-sm font-light text-gray-500 ease-out bg-white border border-gray-100 rounded-full shadow-sm cursor-pointer  bg-opacity-80 backdrop-blur">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"></path></svg>
             <a href="index.html" class="">Table of contents</a>
@@ -34,15 +34,14 @@ Connecting to MongoDB with Elixir
     <section class="prose">
 
 <p>
-In this article, I would like to explain how to connect to MongoDB in Elixir.</p>
-<p>
+In this article, I would like to explain how to connect to MongoDB in Elixir.
 MongoDB is an excellent No-SQL database with many interesting possibilities. Unfortunately, the database is
 somewhat underestimated in the Elixir community and many tutorials like to refer to the Postgresql database.</p>
 <p>
 We will learn</p>
 <ul>
   <li>
-how to create a replica set and create a simple Elixir program that connects to the three instances.  </li>
+how to create a replica set and write a simple Elixir program that connects to the three instances.  </li>
   <li>
 how to connect to Atlas with a user certificate  </li>
   <li>
@@ -52,8 +51,6 @@ how to listen to driver events  </li>
 </ul>
 <p>
 Let’s install the community editor of the MongoDB. In the case of MacOS X we can use <code class="inline">brew</code> to install it:</p>
-
-
 <pre><code class="bash">    brew tap mongodb/brew
     brew install mongodb-community</code></pre>
 <p>
@@ -89,7 +86,7 @@ end</code></pre>
 MongoDB - Replica Set</h2>
 <p>
 Now we will set up the MongoDB with a relica set. We can start a standalone instance, but a typical
-environment consists of a replica set of three instances. This makes the transactions possible.</p>
+environment consists of a replica set of three instances. This enables transactions as well.</p>
 <p>
 We first start three instances on three different ports and then configure the replica set. The
 replica set is called <code class="inline">vesoldo_set</code>. In the case of Mac OS X we will increase the number of file descriptor to avoid
@@ -160,47 +157,6 @@ we pipe the stream to the <code class="inline">Enum.to_list</code> function.</p>
     %{"_id" => #BSON.ObjectId<66cc86f04ae06e2a2c2d4b58>, "name" => "Tom"},
     %{"_id" => #BSON.ObjectId<66cc86ff4ae06e2a2c579be9>, "name" => "Gustav"}
   ]</code></pre>
-<p>
-Now we will learn how to connect using a X.509 user certificate to a database provided by the cloud provider <a href="https://cloud.mongodb.com">Atlas</a>.</p>
-
-
-<h2>
-Connecting to Atlas</h2>
-<p>
-Preparations: After we have set up a simple database via the Atlas dashboard,
-we need to enter our IP address under <strong>Network Access</strong>.
-Under <strong>Database Access</strong> we create a user with read and write access rights and select the <strong>X.509 Authentication Method</strong>.</p>
-<p>
-While creating the new user we can download the user certificate (X509-cert-5985849297881971623.pem). Now we can following the description from
-the readme file of the driver. First, we extract the user name from the certificate</p>
-<pre><code class="shell">openssl x509 -in X509-cert-5985849297881971623.pem -inform PEM -subject -nameopt RFC2253
-
-> CN=user</code></pre>
-<p>
-We use as the <code class="inline">username</code> attribute the name from the certificate, the <code class="inline">auth_mechanism</code> must be <code class="inline">:x509</code>.
-The configuration looks like this:</p>
-<pre><code class="elixir">opts = [
-    url: "mongodb+srv://cluster0.169dm4y.mongodb.net/vesoldo",
-    ssl: true,
-    username: "CN=user",
-    auth_mechanism: :x509,
-    ssl_opts: [
-      verify: :verify_peer,
-      cacertfile: :public_key.cacerts_get(),
-      certfile: ~c"./X509-cert-5985849297881971623.pem",
-      customize_hostname_check: [
-        match_fun:
-          :public_key.pkix_verify_hostname_match_fun(:https)
-      ]
-    ]]
-
-Mongo.start_link(opts)</code></pre>
-<p>
-In the <code class="inline">ssl_opts</code> we need to specify some options for the underlying <code class="inline">ssl</code> module of Erlang. Here
-we specify the path to the certificate as a charlist. The function <code class="inline">:public_key.cacerts_get()</code> returns
-the trusted CA certificates of the operation system, because we use the <code class="inline">verify_peer</code> option.</p>
-<p>
-The setting of the attribute <code class="inline">customize_hostname_check</code> allows wildcard certificate matching as specified by the HTTP standard.</p>
 
 
 <h2>
@@ -242,6 +198,113 @@ If we add a new dog to our collection, the driver will log something like:</p>
 19:44:00.698 [info] CMD insert "dogs" [documents: [[_id: #BSON.ObjectId<66ccbee04ae06e632973c553>, name: "Bodo"]]] db=15.5ms
 {:ok, %Mongo.InsertOneResult{acknowledged: true, inserted_id: #BSON.ObjectId<66ccbee04ae06e632973c553>}}
 </code></pre>
+
+
+<h2>
+Listen to events</h2>
+<p>
+The driver sends different types of events when something has changed in the topology or when commands are sent
+to the database. We can subscribe to these and make the driver’s activity visible.
+To do this, we implement a simple GenServer.</p>
+<pre><code class="elixr">defmodule EventHandler do
+
+  require Logger
+
+  use GenServer
+
+  @me __MODULE__
+
+  def start_link(_args) do
+    GenServer.start_link(@me, :no_args, name: @me)
+  end
+
+  @impl true
+  def init(:no_args) do
+    Registry.register(:events_registry, :topology, [])
+    {:ok, []}
+  end
+
+  @impl true
+  def handle_info({:broadcast, :topology, %Mongo.Events.TopologyDescriptionChangedEvent{} = event}, state) do
+    Logger.info("Event: #{inspect event.new_description.type}")
+    {:noreply, state}
+  end
+
+  def handle_info(_message, state) do
+    {:noreply, state}
+  end
+
+end</code></pre>
+<p>
+In the application.ex file we extend the list of the children:</p>
+<pre><code class="elixir">  children = [
+    {EventHandler, []},
+    {Mongo, opts},
+  ]</code></pre>
+<p>
+After restarting the application we can observer the updates of the topology:</p>
+<pre><code class="sh">15:40:45.098 [info] Event: :unknown
+15:40:45.098 [info] Event: :unknown
+15:40:45.098 [info] Event: :replica_set_with_primary</code></pre>
+<p>
+Monitor processes monitor the individual servers in the background. If, for example, a new server is added,
+the topology is adjusted and an event is broadcasted.</p>
+<p>
+Interesting use cases can be derived from thisfeature: If the primary server fails, we can prevent all
+write operations until a new primary server has been found.</p>
+<p>
+Now we will learn how to connect using a X.509 user certificate to a database provided by the cloud provider <a href="https://cloud.mongodb.com">Atlas</a>.</p>
+
+
+<h2>
+Connecting to Atlas</h2>
+<p>
+Preparations: After we have set up a simple database via the Atlas dashboard,
+we need to enter our IP address under <strong>Network Access</strong>.
+Under <strong>Database Access</strong> we create a user with read and write access rights and select the <strong>X.509 Authentication Method</strong>.</p>
+<p>
+While creating the new user we can download the user certificate (X509-cert-5985849297881971623.pem). Now we can following the description from
+the readme file of the driver. First, we extract the user name from the certificate</p>
+<pre><code class="shell">openssl x509 -in X509-cert-5985849297881971623.pem -inform PEM -subject -nameopt RFC2253
+
+> CN=user</code></pre>
+<p>
+We set the <code class="inline">username</code> attribute to <code class="inline">CN=user</code>. The <code class="inline">auth_mechanism</code> must be <code class="inline">:x509</code>.
+The configuration looks like this:</p>
+<pre><code class="elixir">opts = [
+    url: "mongodb+srv://cluster0.169dm4y.mongodb.net/vesoldo",
+    ssl: true,
+    username: "CN=user",
+    auth_mechanism: :x509,
+    ssl_opts: [
+      verify: :verify_peer,
+      cacertfile: :public_key.cacerts_get(),
+      certfile: ~c"./X509-cert-5985849297881971623.pem",
+      customize_hostname_check: [
+        match_fun:
+          :public_key.pkix_verify_hostname_match_fun(:https)
+      ]
+    ]]
+
+Mongo.start_link(opts)</code></pre>
+<p>
+In the <code class="inline">ssl_opts</code> we need to specify some options for the underlying <code class="inline">ssl</code> module of Erlang. Here
+we specify the path to the certificate as a charlist. The function <code class="inline">:public_key.cacerts_get()</code> returns
+the trusted CA certificates of the operation system, because we use the <code class="inline">verify_peer</code> option.</p>
+<p>
+The setting of the attribute <code class="inline">customize_hostname_check</code> allows wildcard certificate matching as specified by the HTTP standard.</p>
+<p>
+Now we can start our application and the driver will connect to the Atlas cluster.</p>
+
+
+<h2>
+Conclusion</h2>
+<p>
+We have seen that various connection methods exist. On the one hand, you can log in directly without a user and
+on the other hand, you can perform an encrypted login with a user certificate.</p>
+<p>
+In addition to the usual log outputs, the driver also provides telemetry and events that
+can be used to monitor communication, performance and the use of the database.</p>
 
 
     </section>
