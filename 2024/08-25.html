@@ -23,11 +23,17 @@ Connecting to MongoDB with Elixir
 <main class="px-4 py-20 sm:px-6 lg:px-8">
   <div class="mx-auto max-w-2xl">
 <article>
+    <header class="fixed left-0 top-0 bg-white py-3 flex items-center justify-center w-full">
+        <div class="flex items-center justify-center w-40 h-full text-sm font-light text-gray-500 ease-out bg-white border border-gray-100 rounded-full shadow-sm cursor-pointer  bg-opacity-80 backdrop-blur">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"></path></svg>
+            <a href="index.html" class="">Table of contents</a>
+        </div>
+    </header>
     <div class="text-sm text-center mt-2 mb-2 text-gray-500">August 25, 2024</div>
-    <h1 class="text-6xl font-bold text-center mt-6 mb-8">Connecting to MongoDB with Elixir</h1>
+    <h1 class="text-3xl lg:text-6xl font-bold text-center mt-6 mb-8">Connecting to MongoDB with Elixir</h1>
+    <section class="prose">
 
-        <div class="prose prose-p:mb-3 prose-p:mt-0 prose-p:leading-snug">
-      <p>
+<p>
 In this article, I would like to explain how to connect to MongoDB in Elixir.</p>
 <p>
 MongoDB is an excellent No-SQL database with many interesting possibilities. Unfortunately, the database is
@@ -47,10 +53,8 @@ how to listen to driver events  </li>
 <p>
 Let’s install the community editor of the MongoDB. In the case of MacOS X we can use <code class="inline">brew</code> to install it:</p>
 
-   </div>
 
-        <div class="prose prose-p:mb-3 prose-p:mt-0 prose-p:leading-snug">
-      <pre><code class="bash">    brew tap mongodb/brew
+<pre><code class="bash">    brew tap mongodb/brew
     brew install mongodb-community</code></pre>
 <p>
 Before we set up MongoDB as a replica set, we create a new Elixir project with mix. With the <code class="inline">--sup</code> option, we get the basic framework for an OTP application with supervisor tree.</p>
@@ -99,10 +103,8 @@ mongod --wiredTigerCacheSizeGB=1 --fork --dbpath tmp/db1 --logpath tmp/db1/log -
 mongod --wiredTigerCacheSizeGB=1 --fork --dbpath tmp/db2 --logpath tmp/db2/log --port 27018 --bind_ip 0.0.0.0 --replSet vesoldo_set
 mongod --wiredTigerCacheSizeGB=1 --fork --dbpath tmp/db3 --logpath tmp/db3/log --port 27019 --bind_ip 0.0.0.0 --replSet vesoldo_set</code></pre>
 
-   </div>
 
-        <div class="prose prose-p:mb-3 prose-p:mt-0 prose-p:leading-snug">
-      <p>
+<p>
 If the servers are running without any error then we can configure the replica set. We use the mongosh tool to log in
 and configure the replica set:</p>
 <pre><code class="bash">mongosh 'mongodb://127.0.0.1:27017'</code></pre>
@@ -126,10 +128,8 @@ If the shell shows something like:</p>
 then we can quid the shell and our replica set is running. For more information about replica set
 you can take a look at the <a href="https://www.mongodb.com/docs/manual/replication/">official documentation.</a></p>
 
-   </div>
 
-        <div class="prose prose-p:mb-3 prose-p:mt-0 prose-p:leading-snug">
-      <h2>
+<h2>
 Connecting to the local instance</h2>
 <p>
 Now everything is prepared to connect to our replica set from Elixir. You can use the interactive
@@ -163,10 +163,8 @@ we pipe the stream to the <code class="inline">Enum.to_list</code> function.</p>
 <p>
 Now we will learn how to connect using a X.509 user certificate to a database provided by the cloud provider <a href="https://cloud.mongodb.com">Atlas</a>.</p>
 
-   </div>
 
-        <div class="prose prose-p:mb-3 prose-p:mt-0 prose-p:leading-snug">
-      <h2>
+<h2>
 Connecting to Atlas</h2>
 <p>
 Preparations: After we have set up a simple database via the Atlas dashboard,
@@ -204,10 +202,8 @@ the trusted CA certificates of the operation system, because we use the <code cl
 <p>
 The setting of the attribute <code class="inline">customize_hostname_check</code> allows wildcard certificate matching as specified by the HTTP standard.</p>
 
-   </div>
 
-        <div class="prose prose-p:mb-3 prose-p:mt-0 prose-p:leading-snug">
-      <h2>
+<h2>
 Using a supervisor</h2>
 <p>
 We currently use a local pid of the process. If we add a worker process into our supervisor found in
@@ -247,8 +243,8 @@ If we add a new dog to our collection, the driver will log something like:</p>
 {:ok, %Mongo.InsertOneResult{acknowledged: true, inserted_id: #BSON.ObjectId<66ccbee04ae06e632973c553>}}
 </code></pre>
 
-   </div>
 
+    </section>
 </article>
   </div>
 </main>

@@ -23,11 +23,17 @@ Using NimbleParsec to solve issues
 <main class="px-4 py-20 sm:px-6 lg:px-8">
   <div class="mx-auto max-w-2xl">
 <article>
+    <header class="fixed left-0 top-0 bg-white py-3 flex items-center justify-center w-full">
+        <div class="flex items-center justify-center w-40 h-full text-sm font-light text-gray-500 ease-out bg-white border border-gray-100 rounded-full shadow-sm cursor-pointer  bg-opacity-80 backdrop-blur">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"></path></svg>
+            <a href="index.html" class="">Table of contents</a>
+        </div>
+    </header>
     <div class="text-sm text-center mt-2 mb-2 text-gray-500">August 28, 2024</div>
-    <h1 class="text-6xl font-bold text-center mt-6 mb-8">Using NimbleParsec to solve issues</h1>
+    <h1 class="text-3xl lg:text-6xl font-bold text-center mt-6 mb-8">Using NimbleParsec to solve issues</h1>
+    <section class="prose">
 
-        <div class="prose prose-p:mb-3 prose-p:mt-0 prose-p:leading-snug">
-      <p>
+<p>
 In this article, I would like to explain how to parse parts of the invalid JSON string using NimbleParsec.</p>
 <p>
 From the documentation:</p>
@@ -61,8 +67,10 @@ iex [09:59 :: 3] > Jason.decode!(s)
 ** (Jason.DecodeError) unexpected sequence at position 16: "\\uded0"
      (jason 1.4.4) lib/jason.ex:92: Jason.decode!/2
 iex:3: (file)</code></pre>
-<h3>
-How to solve this issue?</h3>
+
+
+<h2>
+How to solve this issue?</h2>
 <p>
 To return an error to the client instead of disconnecting the WebSocket connection
 we need to extract the first four parts of the message.</p>
@@ -114,16 +122,14 @@ end</code></pre>
 <p>
 Now we can parse fragments of the invalid JSON string. Let’s do some tests:</p>
 
-   </div>
 
-        <div class="prose prose-p:mb-3 prose-p:mt-0 prose-p:leading-snug">
-      <pre><code class="elixir">iex 1> OnsenWeb.PrefixDecoder.header(~S/["1","2","Topic","Event",the rest of the string/)
+<pre><code class="elixir">iex 1> PrefixDecoder.header(~S/["1","2","Topic","Event",the rest of the string/)
 {:ok, ["1", "2", "Topic", "Event"], "the rest of the string", %{}, {1, 0}, 25}
-iex 2> OnsenWeb.PrefixDecoder.header(~S/["1",error,"Topic","Event",the rest of the string/)
+iex 2> PrefixDecoder.header(~S/["1",error,"Topic","Event",the rest of the string/)
 {:error, "expected ASCII character equal to \"\\\"\"",
  "error,\"Topic\",\"Event\",the rest of the string", %{}, {1, 0}, 5}</code></pre>
 <p>
-The parse is very strict because we don’t handle whitespaces so far. This is okay, since the
+The parser is very strict because we don’t handle whitespaces so far. This is okay, since the
 client don’t insert whitespaces between the single strings. Let’s make a final test. We
 create an invalid message like the client sometimes does and then we verify that we
 extract the first four strings from the invalid message:</p>
@@ -140,10 +146,8 @@ iex 4> PrefixDecoder.header(message)
 Now we everything together to provide an own implementation of the <code class="inline">Phoenix.Socket.Serializer</code> behaviour.
 We only need to replace the function:</p>
 
-   </div>
 
-        <div class="prose prose-p:mb-3 prose-p:mt-0 prose-p:leading-snug">
-      <pre><code class="elixir">def decode_text(raw_message) do
+<pre><code class="elixir">def decode_text(raw_message) do
     [join_ref, ref, topic, event, payload | _] = decode_raw_message(raw_message)
 
     %Message{
@@ -184,8 +188,8 @@ which can be handled by the client.</p>
 <p>
 Problem solved, until client sends a completely invalid message where our parser returns an error :-)</p>
 
-   </div>
 
+    </section>
 </article>
   </div>
 </main>
