@@ -47,7 +47,8 @@ The issue</h2>
 <p>
 In an Elixir-Phoenix environment, the client sent invalid JSON as a push message via a channel.
 The server could not decode the JSON and therefore aborted the WebSocket connection. The client started a
-new connection and sent the same invalid JSON as a push message via the channel.</p>
+new connection and sent the same invalid JSON as a push message via the channel.
+If one of the two is invalid, then the entire expression is invalid.</p>
 <p>
 It would be easier if the client did not send an invalid JSON.
 The problem here is that the payload and the Phoenix channel data are sent together as JSON.</p>
@@ -143,7 +144,7 @@ iex 4> PrefixDecoder.header(message)
 {:ok, ["1", "2", "Topic", "Event"],
  "{\"title\": \"This does not work: \\uded0\"}]", %{}, {1, 0}, 25}</code></pre>
 <p>
-Now we everything together to provide an own implementation of the <code class="inline">Phoenix.Socket.Serializer</code> behaviour.
+Now we can put everything together to provide an own implementation of the <code class="inline">Phoenix.Socket.Serializer</code> behaviour.
 We only need to replace the function:</p>
 
 
