@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en" class="[scrollbar-gutter:stable]">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>
+Using D3.js and LiveView
+    </title>
+    <base href="https://zookzook.github.io">
+    <link phx-track-static rel="stylesheet" href="assets/app.css">
+    <link rel="preconnect" href="https://rsms.me/">
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/styles/github-dark-dimmed.min.css">
+    <script defer phx-track-static type="text/javascript" src="assets/app.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/languages/elixir.min.js"></script>
+    <script>
+        hljs.highlightAll();
+    </script>
+  </head>
+  <body class="font-sans mx-auto max-w-prose">
+    <div class="pt-12 pb-4">
+<main class="px-4 py-20 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-2xl">
+<article>
+    <header class="fixed left-0 top-0 bg-white/95 py-3 flex items-center justify-center w-full">
+        <div class="flex items-center justify-center w-40 h-full text-sm font-light text-gray-500 ease-out bg-white border border-gray-100 rounded-full shadow-sm cursor-pointer  bg-opacity-80 backdrop-blur">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"></path></svg>
+            <a href="index.html" class="">Table of contents</a>
+        </div>
+    </header>
+    <div class="text-sm text-center mt-2 mb-2 text-gray-500">September 8, 2024</div>
+    <h1 class="text-3xl lg:text-6xl font-bold text-center mt-6 mb-8">Using D3.js and LiveView</h1>
+    <section class="prose">
+
+<p>
+  <img src="images/scheduler-utilization.jpg" alt="Scheduler Utilization" title="Title">
+</p>
+<p>
+In this article, I would like to explain how to use <a href="https://d3js.org">D3.js</a>
+and LiveView to display the utilization of the Erlang schedulers.</p>
+<p>
+Load testing are particularly useful for servers in order to test the non-functional requirements
+(memory consumption, CPU utilization, network utilization) for specific and selected use cases.</p>
+<p>
+A heavy one-sided load is generated on the server and the CPU load and/or IO throughut is monitored.
+For network-loaded applications, low CPU utilization and high output would be optimal.
+The metric selected depends heavily on the application itself. But basically the concept of the load testing remains the same.</p>
+<p>
+The utilization of the scheduler can be used to record the CPU utilization. At the same time, IO values can be queried.
+The Erlang-BEAM provides these information.</p>
+<p>
+Normally you would use the observer to monitor the utilization of the scheduler.
+To do this, the applications <code class="inline">:wx, :observer</code> would have to be started. In some environments this is not possible.
+There it would be possible to establish a connection via the network and start the Observer locally. However,
+this is also not possible in some environments for configuration or security reasons.</p>
+<p>
+What can we do?</p>
+<p>
+We can enable the <strong>LiveDashboard</strong>. The LiveDashboard includes a similar range of functions as the Observer
+but unfortunately lacks scheduler utilization in real-time.</p>
+<p>
+We can extend the LiveDashboard or write a simple LiveView to display the values. In this article, we
+will use D3.js and LiveView to display the utilization and IO activities:</p>
+<ul>
+  <li>
+Collecting the data  </li>
+  <li>
+Updating the LiveView  </li>
+  <li>
+Displaying the data with D3.js  </li>
+</ul>
+
+
+<h2>
+Collecting the data</h2>
+<p>
+We can use the <code class="inline">:scheduler.sample_all/0</code> and <code class="inline">:erlang.statistics/1</code> functions to collect the data as follows:</p>
+<pre><code class="elixir">def statistics(sample_duration \\ 1_000) do
+  sample = :scheduler.sample_all()
+  Process.sleep(sample_duration)
+  utilization = :scheduler.utilization(sample, :scheduler.sample_all())
+
+  io =
+    case :erlang.statistics(:io) do
+      {{:input, input}, {:output, output}} ->
+        %{input: input, output: output}
+
+      _other ->
+        %{input: 0, output: 0}
+    end
+
+  %{io: io, utilization: utilization}
+end</code></pre>
+<p>
+The result will look like:</p>
+<pre><code class="elixir">%{
+  io: %{input: 91010087025, output: 75252498056},
+  utilization: [
+    {:total, 0.030731203908744342, ~c"3.1%"},
+    {:weighted, 0.061462407817488685, ~c"6.1%"},
+    {:normal, 1, 0.06239245657016214, ~c"6.2%"},
+    {:normal, 2, 0.0681790067151196, ~c"6.8%"},
+    {:normal, 3, 0.06160054551952141, ~c"6.2%"},
+    {:normal, 4, 0.053677618626724946, ~c"5.4%"},
+    {:cpu, 5, 0.0, ~c"0.0%"},
+    {:cpu, 6, 0.0, ~c"0.0%"},
+    {:cpu, 7, 0.0, ~c"0.0%"},
+    {:cpu, 8, 0.0, ~c"0.0%"},
+    {:io, 9, 0.0, ~c"0.0%"},
+    {:io, 10, 0.0, ~c"0.0%"},
+    {:io, 11, 0.0, ~c"0.0%"},
+    {:io, 12, 0.0, ~c"0.0%"},
+    {:io, 13, 0.0, ~c"0.0%"},
+    {:io, 14, 0.0, ~c"0.0%"},
+    {:io, 15, 0.0, ~c"0.0%"},
+    {:io, 16, 0.0, ~c"0.0%"},
+    {:io, 17, 0.0, ~c"0.0%"},
+    {:io, 18, 0.0022569613371039242, ~c"0.2%"}
+  ]
+}</code></pre>
+<p>
+The <code class="inline">utilization</code> contains a list of different tuples. The tuples containing <code class="inline">:normal</code> and <code class="inline">:cpu</code> are
+the interesting values. The <code class="inline">:normal</code> contains the utilization of one scheduler and the <code class="inline">:cpu</code> contains
+the utilization of a dirty scheduler. Each scheduler has an ID and this is the second value of the tuple.</p>
+
+
+<h2>
+Data flow</h2>
+<p>
+Before we look at the code fragments, I would like to discuss the data flow first.</p>
+<p>
+A separate process queries the values for IO and utilization in an interval of 200ms and
+sends this via <code class="inline">Phoenix.PubSub.broadcast(:superlist_pubsub, "scheduler", {"scheduler", ts, statistics})</code>.
+The LiveView subscribes to the topic <code class="inline">scheduler</code>and implements the <code class="inline">handle_info/2</code> function.
+There the data is converted into a JSON packet and sent to the LiveView or the JavaScript implementation,
+which then updates the SVG.</p>
+<p>
+As the IO values are counters, we want to display the rate of change per interval and therefore
+create the difference between the previous and the current IO value. This is done using the <code class="inline">diff_io/2</code> function.</p>
+<p>
+The <code class="inline">handle_info/2</code> function looks like this:</p>
+<pre><code class="elixir">def handle_info({"scheduler", ts, %{utilization: utilization, io: io}}, socket) do
+
+  dirty_schedulers =
+    utilization
+    |> Enum.filter(fn
+      {type, _id, _value, _ignored} -> type == :cpu
+      _other -> false
+    end)
+    |> Enum.map(fn {_type, id, value, _ignored} -> {id, value * 100.0} end)
+    |> Map.new()
+
+  normal_schedulers =
+    utilization
+    |> Enum.filter(fn
+     {type, _id, _value, _ignored} -> type == :normal
+      _other -> false
+    end)
+    |> Enum.map(fn {_type, id, value, _ignored} -> {id, value * 100.0} end)
+    |> Map.new()
+
+  socket =
+    socket
+    |> push_event("add-utilization", %{ts: ts, normals: normal_schedulers, dirties: dirty_schedulers, io: diff_io(socket, io)})
+    |> assign(:io, io)
+
+  {:noreply, socket}
+end</code></pre>
+<p>
+The <code class="inline">diff_io/2</code> function:</p>
+<pre><code class="elixir">defp diff_io(%{assigns: %{io: nil}}, _io) do
+  nil
+end
+
+defp diff_io(%{assigns: %{io: io}}, %{input: input, output: output}) do
+  %{input: input - io.input, output: output - io.output}
+end</code></pre>
+<p>
+Now let’s take a look at the JavaScript implementation.
+The complete implementation can be found in this <a href="https://gist.github.com/zookzook/c84317a3827d7d24c0017a3aee62f596">Gist</a>.</p>
+
+
+<p>
+The hook is first defined for communication between the LiveView process and the JavaScript implementation.</p>
+<pre><code class="javascript">const Utilization = {
+    mounted() {
+        this.utilization = init(this);
+        this.io = initIO(this);
+        this.handleEvent("add-utilization", (values) => {
+            this.io(values);
+            this.utilization(values);
+        })
+    },
+    updated() {
+    ...
+    }
+};
+
+export default Utilization;</code></pre>
+<p>
+The HTML part looks like this:</p>
+<pre><code>&lt;div class="border-2 p-2" id="statistics" phx-hook="Utilization">
+  &lt;svg style="height: 600px" id="utilization-graph">
+  &lt;/svg>
+  &lt;svg class="mt-3" style="height: 600px" id="io-graph">
+  &lt;/svg>
+&lt;/div></code></pre>
+<p>
+If we now call up the page in our browser,
+the hook is found and the <code class="inline">mounted()</code> function is called automatically.</p>
+<p>
+In this function we initialize the SVG element and the D3.js graph. The <code class="inline">init(this)</code> returns a function
+which is used to update the graph if we receive new values.
+To receive new values we add a new event handler for <code class="inline">add-utilization</code>.</p>
+
+
+<p>
+The code fragment shows only the parts for the normal schedulers. The code is identical for the dirty-schedulers.</p>
+<p>
+We define the dimensions of the scaling functions for <code class="inline">x</code> and <code class="inline">y</code>.</p>
+<pre><code class="javascript">
+function init(self) {
+  let svg = d3.select("#utilization-graph");
+  const width = 900;
+  const height = 400;
+  const marginRight = 30;
+  const marginLeft = 60;
+  const marginTop = 20;
+  const marginBottom = 80;
+
+  const x = d3.scaleTime(extentTime(), [marginLeft, width - marginRight]);
+  const y = d3.scaleLinear([0, 100], [height - marginBottom, marginTop]);
+</code></pre>
+<p>
+We store the current values in the <code class="inline">normals</code> map and define the <code class="inline">line</code> generator:</p>
+<pre><code class="javascript">  // utilization values for the normal schedulers
+  let normals = {};
+
+  // Declare the line generator.
+  const line = d3.line()
+   .x(d => x(d.ts))
+   .y(d => y(d.utilization))
+   .curve(d3.curveCatmullRom.alpha(0.5));</code></pre>
+<p>
+Then we create the SVG container, followed by the x- and y-axis:</p>
+<pre><code class="javascript">  // Create the SVG container.
+  svg = svg
+   .attr("width", width)
+   .attr("height", height)
+   .attr("viewBox", [0, 0, width, height])
+   .attr("style", "max-width: 100%; height: auto; height: intrinsic;");
+
+  // Add the x-axis.
+  svg.append("g")
+   .attr("class", "x-axis")
+   .attr("transform", `translate(0, ${height - marginBottom})`)
+   .call(d3.axisBottom(x).ticks(width / 80).tickSizeOuter(0));
+
+  // Add the y-axis, remove the domain line, add grid lines and a label.
+  svg.append("g")
+   .attr("transform", `translate(${marginLeft},0)`)
+   .call(d3.axisLeft(y).ticks(height / 40))
+   .call(g => g.select(".domain").remove())
+   .call(g => g.selectAll(".tick line").clone()
+     .attr("x2", width - marginLeft - marginRight)
+     .attr("stroke-opacity", 0.1))
+   .call(g => g.append("text")
+     .attr("x", -marginLeft)
+     .attr("y", 10)
+     .attr("fill", "currentColor")
+     .attr("text-anchor", "start")
+     .text("Utilization in %"));</code></pre>
+<p>
+We add a group for displaying a simple legend, containing colored boxes for each scheduler:</p>
+<pre><code class="javascript">  // add the group for the legend normal schedulers
+  let normalLegend = svg.append("g").attr("transform", `translate(${marginLeft}, ${height - 50})`);
+
+  // Append a path for the utilization lines.
+  let graphView = svg.append("g").attr("class", "graph-view");
+</code></pre>
+<p>
+This function adds new values for the <code class="inline">normals</code>.
+We remove values older than one minute from <code class="inline">normals</code>. By changing the
+<code class="inline">normals</code> object we animate the SVG graph. For each scheduler
+the <code class="inline">normals</code> contains an array of the utilization values. The
+<code class="inline">filterDomain()</code> function removes old values from the array.</p>
+<pre><code class="javascript">  function addUtilization(data, ts, values, domain) {
+    if(values != null) {
+      for (const [key, value] of Object.entries(values)) {
+        let e = {ts: ts, utilization: value};
+        if(data[key] === undefined) {
+          data[key] = [e]
+        }
+        else {
+          let normalValues = data[key];
+          normalValues.push(e);
+          data[key] = filterDomain(normalValues, domain[0], domain[1]);
+        } // else
+      }
+    }
+  }</code></pre>
+<p>
+Now we define the <code class="inline">update</code> function which is the result of the <code class="inline">init</code> method. This function creates a new domain
+for the x-axis and
+forces a redraw. Then we map the values of the <code class="inline">normals</code> object to a simple
+array <code class="inline">normalSchedulerValues</code>. We use the array to update the
+lines.</p>
+<pre><code class="javascript">  function update(values) {
+    let ts = new Date(values.ts);
+    let domain = extentTime(new Date(values.ts));
+    addUtilization(normals, ts, values.normals, domain);
+
+    svg.select(".x-axis").call(d3.axisBottom(x).ticks(width / 80).tickSizeOuter(0));
+
+    let i = 0;
+    let normalSchedulerValues = [];
+    for (const [key, values] of Object.entries(normals)) {
+      normalSchedulerValues.push({index: i, id: key, values: values})
+      i += 1;
+    }</code></pre>
+<p>
+The <code class="inline">join</code> method
+accepts the three functions for adding, updating and removing values. <code class="inline">enter</code> is used to add new
+values. Here, we add a new path using the values of the schedulers. Since the scheduler won’t
+change, it is done only once.</p>
+<p>
+The <code class="inline">update</code> function updates the <code class="inline">d</code> attribute with the new values from the array.
+This automatically animates the graph.</p>
+<p>
+The <code class="inline">exit</code> function describes what to do when the graph is removed.
+In our case, this will not happen. For the sake of order, we define that the graph should be removed.</p>
+<pre><code class="javascript">    graphView.selectAll('.normal-scheduler').data(normalSchedulerValues, function (d) { return d.id; })
+    .join(
+      enter => enter.append('path')
+                  .attr('class', 'normal-scheduler')
+                  .attr("fill", "none")
+                  .attr("stroke", (d) => normColors[d.id % maxColors])
+                  .attr("stroke-width", 0.5)
+                  .attr('d', (d) => {return line(d.values);}),
+      update => update.attr('d', (d) => {return line(d.values);}),
+      exit => exit.remove()
+     );
+
+    normalLegend.selectAll('rect').data(normalSchedulerValues, function (d) { return d.id; })
+      .join(
+          enter => {
+            enter.append('rect')
+              .attr("fill", (d) => normColors[d.index % maxColors])
+              .attr("x", (d) => d.index * 40)
+              .attr("y", 0)
+              .attr("width", 15)
+              .attr("height", 15);
+              enter.append("text")
+                .attr("x", (d) => d.index * 40 + 18)
+                .attr("y", 12)
+                .attr("class", "text-xs")
+                .text(function(d) { return d.id; });
+              },
+          update => update,
+          exit => exit.remove()
+         );
+  }
+
+  return function(data) {return update(data)};
+}</code></pre>
+<p>
+The <code class="inline">init</code> function now returns a function, which in turn calls the local <code class="inline">update</code> function with the
+new data.</p>
+<p>
+How are the SVG elements found for certain data? We can use the ID of the scheduler for this.
+The <code class="inline">data</code> function ensures that we tell D3.js how the elements should be identified.</p>
+<pre><code class="JavaScript">graphView.selectAll('.normal-scheduler').data(normalSchedulerValues, function (d) { return d.id; })</code></pre>
+<p>
+Let’s go back to the JavaScript hook. If the LiveView sends new data using <code class="inline">push_event(socket, "add-utilization",...)</code>,
+we call the <code class="inline">update</code> function stored in <code class="inline">this.utilization</code> with the new data. The <code class="inline">update</code> function appends the
+new values and maybe removes old values.
+Then the graph is updated.</p>
+<pre><code class="javascript">const Utilization = {
+    mounted() {
+        this.utilization = init(this);
+        this.handleEvent("add-utilization", (values) => {
+            this.utilization(values);
+        })
+    },
+    ...
+};</code></pre>
+
+
+<h2>
+Conclusion</h2>
+<p>
+We have learnt how to connect D3.js and of course other JavaScript packages with
+LiveView via <a href="https://hexdocs.pm/phoenix_live_view/js-interop.html">JavaScript interoperability</a>.</p>
+<p>
+The implementation of <a href="https://hexdocs.pm/phoenix_live_view/js-interop.html#client-hooks-via-phx-hook">hooks</a> in
+particular makes it easy to organize communication between client and server with many options.</p>
+
+
+    </section>
+</article>
+  </div>
+</main>
+    </div>
+  <iframe hidden height="0" width="0" src="/phoenix/live_reload/frame"></iframe></body>
+</html>
