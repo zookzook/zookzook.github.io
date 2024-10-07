@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en" class="[scrollbar-gutter:stable]">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>
+Using Network Compression with MongoDB in Elixir
+    </title>
+    <base href="https://zookzook.github.io">
+    <link phx-track-static rel="stylesheet" href="assets/app.css">
+    <link rel="preconnect" href="https://rsms.me/">
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/styles/github-dark-dimmed.min.css">
+    <script defer phx-track-static type="text/javascript" src="assets/app.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/languages/elixir.min.js"></script>
+    <script>
+        hljs.highlightAll();
+    </script>
+  </head>
+  <body class="font-sans mx-auto max-w-prose">
+    <div class="pt-12 pb-4">
+<main class="px-4 py-20 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-2xl">
+<article>
+    <header class="fixed left-0 top-0 bg-white/95 py-3 flex items-center justify-center w-full">
+        <div class="flex items-center justify-center w-40 h-full text-sm font-light text-gray-500 ease-out bg-white border border-gray-100 rounded-full shadow-sm cursor-pointer  bg-opacity-80 backdrop-blur">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"></path></svg>
+            <a href="index.html" class="">Table of contents</a>
+        </div>
+    </header>
+    <div class="text-sm text-center mt-2 mb-2 text-gray-500">September 15, 2024</div>
+    <h1 class="text-3xl lg:text-6xl font-bold text-center mt-6 mb-8">Using Network Compression with MongoDB in Elixir</h1>
+    <section class="prose">
+
+<p>
+In this article, I would like to explain what are the effects of
+using network compression with the MongoDB.</p>
+<p>
+A parameter in the URL switches the compression of the network connection on and off.
+Compression is switched off by default.</p>
+<p>
+The Elixir MongoDB driver supports two different compression types:</p>
+<ul>
+  <li>
+zlib, which is supported by Erlang  </li>
+  <li>
+zstd, which is optional and supported by <a href="https://github.com/silviucpp/ezstd">https://github.com/silviucpp/ezstd</a> bindings.  </li>
+</ul>
+<p>
+zlib compression works out of the box and is part of the Erlang beam.
+The compression rate is high, but the CPU load is also higher.</p>
+<p>
+zstd was developed by Facebook, offers an almost identical compression rate as zlib,
+but the CPU utilisation is lower. zstd is therefore a good choice, although you have to use an external
+library with bindiung for C implementation.</p>
+<p>
+To activate zstd compression, simply add <code class="inline">{:ezstd, "~> 1.1"}</code> to the dependencies of your mix.exs file.
+The driver will provide the related code. After activating the zstd compressor can be used by appending
+the compressors=zstd to the URL connection string:</p>
+<pre><code class="elixir">{:ok, top} = Mongo.start_link(url: "mongodb://localhost:27017/my_database?compressors=zstd")</code></pre>
+<p>
+That was quite simple and the article would already be over now.
+Ultimately, this article is more about the question:</p>
+
+
+<h2>
+Why should you use network compression?</h2>
+<p>
+This question becomes interesting when you have to pay for network data. On the one hand,
+there are offers for consumers that have different transmission speed limits.
+A distinction is made between upload and download. The faster the guaranteed speed,
+the more expensive it is.</p>
+<p>
+On the other hand, you pay for cloud providers’ servers by volume. A distinction is usually made
+between public and private data traffic. Assuming you have rented a dedicated server in the cloud
+and a MongoDB in the Atlas cloud, it is often the case that this represents public data traffic
+and therefore you pay for the network volume.</p>
+<p>
+In this case, network compression becomes interesting.</p>
+<p>
+To measure the side effects on our server, we run a test loading and fetching data from a local database.
+We measure the time and the input/output traffic to determine the compression rate.
+The rate naturally depends on the individual data and must therefore always be repeated with your own data.
+You should also analyse your own use cases:</p>
+<pre><code class="elixir">def benchmark() do
+  {{:input, input}, {:output, output}} = :erlang.statistics(:io)
+  {t, _result} = :timer.tc(fn ->
+    for _i <- 1..5 do
+      Mongo.find(:onsen_db, "tasks", %{}, limit: 30_000, batch_size: 1000) |> Stream.reject(fn _x -> true end) |> Stream.run()
+    end
+  end)
+  {{:input, input_1}, {:output, output_1}} = :erlang.statistics(:io)
+  {input_1 - input, output_1 - output, t / 1_000}
+end</code></pre>
+<p>
+Without compression, the code takes 8 seconds. 322MB are received from the database and approx. 30k bytes are sent.
+With zlib compression, the code takes 12 seconds, sends 38k bytes and receives 55MB. We save about 83% bytes
+when receiving the data from the database. Surprisingly, we send more bytes.</p>
+<p>
+With zstd compression, the code takes 8.5 seconds, sends 35k bytes and receives 49MB. In this case, we save about 85% bytes.
+Again, the code sends more bytes.</p>
+<p>
+The slight increase in the amount of data sent can be explained by the fact that we receive the data in batches.
+The request for the next batch is probably so small that the compression requires more data.</p>
+
+
+<h2>
+Conclusion</h2>
+<ul>
+  <li>
+The activation of network compression only requires one parameter.  </li>
+  <li>
+zstd compression is a good compromise between compression rate and speed, but requires additional NIF bindings.  </li>
+  <li>
+We can theoretically save 80% data traffic.  </li>
+  <li>
+Network compression is a quick-win for applications where the database traffic has to be paid for.  </li>
+</ul>
+
+
+    </section>
+</article>
+  </div>
+</main>
+    </div>
+  <iframe hidden height="0" width="0" src="/phoenix/live_reload/frame"></iframe></body>
+</html>
